@@ -17,7 +17,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 ### From Git
 
-Install using git as a package index:
+Install from git:
 
 ```bash
 pip install git+https://github.com/vllm-project/bart-plugin
