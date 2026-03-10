@@ -6,13 +6,7 @@ import pytest
 import torch
 from transformers import Florence2Config
 
-# Allow override via env var so CI can point at a local checkpoint.
-MODEL_NAME = os.environ.get(
-    "FLORENCE2_MODEL",
-    os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../Florence-2-base-ft")
-    ),
-)
+MODEL_NAME = "florence-community/Florence-2-base-ft"
 
 
 def _small_vision_config():
@@ -135,13 +129,17 @@ def _run_task(llm, processor, image, task_prompt, text_input=None, max_tokens=10
     from vllm import SamplingParams
 
     prompt = task_prompt if text_input is None else task_prompt + text_input
-    params = SamplingParams(temperature=0.0, max_tokens=max_tokens, skip_special_tokens=False)
+    params = SamplingParams(
+        temperature=0.0, max_tokens=max_tokens, skip_special_tokens=False
+    )
     outputs = llm.generate(
         [{"prompt": prompt, "multi_modal_data": {"image": image}}],
         sampling_params=params,
     )
     raw = outputs[0].outputs[0].text
-    return processor.post_process_generation(raw, task=task_prompt, image_size=image.size)
+    return processor.post_process_generation(
+        raw, task=task_prompt, image_size=image.size
+    )
 
 
 @pytest.fixture(scope="module")
@@ -178,30 +176,60 @@ class TestFlorenceInference:
     # ------------------------------------------------------------------
 
     def test_caption(self, florence2_llm, florence2_processor, stop_sign_image):
-        result = _run_task(florence2_llm, florence2_processor, stop_sign_image, "<CAPTION>", max_tokens=30)
+        result = _run_task(
+            florence2_llm,
+            florence2_processor,
+            stop_sign_image,
+            "<CAPTION>",
+            max_tokens=30,
+        )
         text = result["<CAPTION>"].lower()
-        assert "car" in text or "stop" in text, f"<CAPTION> output missing expected content: {text!r}"
+        assert "car" in text or "stop" in text, (
+            f"<CAPTION> output missing expected content: {text!r}"
+        )
 
-    def test_detailed_caption(self, florence2_llm, florence2_processor, stop_sign_image):
-        result = _run_task(florence2_llm, florence2_processor, stop_sign_image, "<DETAILED_CAPTION>", max_tokens=80)
+    def test_detailed_caption(
+        self, florence2_llm, florence2_processor, stop_sign_image
+    ):
+        result = _run_task(
+            florence2_llm,
+            florence2_processor,
+            stop_sign_image,
+            "<DETAILED_CAPTION>",
+            max_tokens=80,
+        )
         text = result["<DETAILED_CAPTION>"].lower()
         # Must mention the car and give some background detail — guards against the
         # KV-cache encoder_seq_lens regression that previously produced garbled output.
         assert "car" in text, f"<DETAILED_CAPTION> missing 'car': {text!r}"
         assert len(text.split()) >= 10, f"<DETAILED_CAPTION> too short: {text!r}"
 
-    def test_more_detailed_caption(self, florence2_llm, florence2_processor, stop_sign_image):
-        result = _run_task(florence2_llm, florence2_processor, stop_sign_image, "<MORE_DETAILED_CAPTION>", max_tokens=100)
+    def test_more_detailed_caption(
+        self, florence2_llm, florence2_processor, stop_sign_image
+    ):
+        result = _run_task(
+            florence2_llm,
+            florence2_processor,
+            stop_sign_image,
+            "<MORE_DETAILED_CAPTION>",
+            max_tokens=100,
+        )
         text = result["<MORE_DETAILED_CAPTION>"].lower()
-        assert "stop sign" in text or "sign" in text, f"<MORE_DETAILED_CAPTION> missing 'stop sign': {text!r}"
+        assert "stop sign" in text or "sign" in text, (
+            f"<MORE_DETAILED_CAPTION> missing 'stop sign': {text!r}"
+        )
         assert len(text.split()) >= 10, f"<MORE_DETAILED_CAPTION> too short: {text!r}"
 
     # ------------------------------------------------------------------
     # Structured-output tasks — check schema and key labels
     # ------------------------------------------------------------------
 
-    def test_object_detection(self, florence2_llm, florence2_processor, stop_sign_image):
-        result = _run_task(florence2_llm, florence2_processor, stop_sign_image, "<OD>", max_tokens=300)
+    def test_object_detection(
+        self, florence2_llm, florence2_processor, stop_sign_image
+    ):
+        result = _run_task(
+            florence2_llm, florence2_processor, stop_sign_image, "<OD>", max_tokens=300
+        )
         od = result["<OD>"]
         assert "bboxes" in od and "labels" in od
         assert len(od["bboxes"]) == len(od["labels"]) > 0
@@ -209,18 +237,38 @@ class TestFlorenceInference:
         for bbox in od["bboxes"]:
             assert len(bbox) == 4 and all(c >= 0 for c in bbox)
         labels = od["labels"]
-        assert "stop sign" in labels, f"Expected 'stop sign' in OD labels, got: {labels}"
-        assert "car" in labels or "building" in labels, f"Expected common objects in OD labels, got: {labels}"
+        assert "stop sign" in labels, (
+            f"Expected 'stop sign' in OD labels, got: {labels}"
+        )
+        assert "car" in labels or "building" in labels, (
+            f"Expected common objects in OD labels, got: {labels}"
+        )
 
-    def test_dense_region_caption(self, florence2_llm, florence2_processor, stop_sign_image):
-        result = _run_task(florence2_llm, florence2_processor, stop_sign_image, "<DENSE_REGION_CAPTION>", max_tokens=250)
+    def test_dense_region_caption(
+        self, florence2_llm, florence2_processor, stop_sign_image
+    ):
+        result = _run_task(
+            florence2_llm,
+            florence2_processor,
+            stop_sign_image,
+            "<DENSE_REGION_CAPTION>",
+            max_tokens=250,
+        )
         drc = result["<DENSE_REGION_CAPTION>"]
         assert "bboxes" in drc and "labels" in drc
         assert len(drc["bboxes"]) == len(drc["labels"]) > 0
-        assert "stop sign" in drc["labels"], f"Expected 'stop sign' in dense captions, got: {drc['labels']}"
+        assert "stop sign" in drc["labels"], (
+            f"Expected 'stop sign' in dense captions, got: {drc['labels']}"
+        )
 
     def test_region_proposal(self, florence2_llm, florence2_processor, stop_sign_image):
-        result = _run_task(florence2_llm, florence2_processor, stop_sign_image, "<REGION_PROPOSAL>", max_tokens=100)
+        result = _run_task(
+            florence2_llm,
+            florence2_processor,
+            stop_sign_image,
+            "<REGION_PROPOSAL>",
+            max_tokens=100,
+        )
         rp = result["<REGION_PROPOSAL>"]
         assert "bboxes" in rp and "labels" in rp
         assert len(rp["bboxes"]) > 0
@@ -228,7 +276,13 @@ class TestFlorenceInference:
         assert all(label == "" for label in rp["labels"])
 
     def test_ocr_with_region(self, florence2_llm, florence2_processor, stop_sign_image):
-        result = _run_task(florence2_llm, florence2_processor, stop_sign_image, "<OCR_WITH_REGION>", max_tokens=250)
+        result = _run_task(
+            florence2_llm,
+            florence2_processor,
+            stop_sign_image,
+            "<OCR_WITH_REGION>",
+            max_tokens=250,
+        )
         ocr = result["<OCR_WITH_REGION>"]
         assert "quad_boxes" in ocr and "labels" in ocr
         assert len(ocr["quad_boxes"]) == len(ocr["labels"]) > 0
@@ -237,12 +291,20 @@ class TestFlorenceInference:
             assert len(quad) == 8
         # "STOP" is the most prominent text in the image
         joined = " ".join(ocr["labels"])
-        assert "STOP" in joined, f"Expected 'STOP' in OCR_WITH_REGION labels, got: {joined!r}"
+        assert "STOP" in joined, (
+            f"Expected 'STOP' in OCR_WITH_REGION labels, got: {joined!r}"
+        )
 
-    def test_caption_to_phrase_grounding(self, florence2_llm, florence2_processor, stop_sign_image):
+    def test_caption_to_phrase_grounding(
+        self, florence2_llm, florence2_processor, stop_sign_image
+    ):
         result = _run_task(
-            florence2_llm, florence2_processor, stop_sign_image,
-            "<CAPTION_TO_PHRASE_GROUNDING>", text_input="A stop sign on a street corner.", max_tokens=80,
+            florence2_llm,
+            florence2_processor,
+            stop_sign_image,
+            "<CAPTION_TO_PHRASE_GROUNDING>",
+            text_input="A stop sign on a street corner.",
+            max_tokens=80,
         )
         cpg = result["<CAPTION_TO_PHRASE_GROUNDING>"]
         assert "bboxes" in cpg and "labels" in cpg
@@ -259,10 +321,15 @@ class TestFlorenceInference:
         """Multiple prompts in one batch must all produce non-empty output."""
         from vllm import SamplingParams
 
-        params = SamplingParams(temperature=0.0, max_tokens=30, skip_special_tokens=False)
+        params = SamplingParams(
+            temperature=0.0, max_tokens=30, skip_special_tokens=False
+        )
         prompts = [
             {"prompt": "<CAPTION>", "multi_modal_data": {"image": stop_sign_image}},
-            {"prompt": "<DETAILED_CAPTION>", "multi_modal_data": {"image": stop_sign_image}},
+            {
+                "prompt": "<DETAILED_CAPTION>",
+                "multi_modal_data": {"image": stop_sign_image},
+            },
         ]
         outputs = florence2_llm.generate(prompts, sampling_params=params)
         assert all(len(o.outputs[0].text) > 0 for o in outputs)
